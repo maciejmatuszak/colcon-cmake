@@ -72,8 +72,10 @@ class CmakeBuildTask(TaskExtensionPoint):
 
         parser.add_argument(
             '--cmake-export',
-            action='store_true',
-            help='Export cmake configure settings to json format')
+            metavar='EXPORT_PATH',
+            help='Export cmake commands settings to json file, EXPORT_PATH is relative to project source folder '
+                 'or absolute. Files will be named: cmake_export_(configure|build(_<target>)|install).json representing'
+                 ' cmake step settings ')
 
     async def build(  # noqa: D102
         self, *, additional_hooks=None, skip_hook_creation=False,
@@ -391,6 +393,15 @@ class CmakeBuildTask(TaskExtensionPoint):
             "shell": False,
             "colcon_build_type": self.context.pkg.type
         }
-        filePath = Path(args.build_base) / f'cmake_export_{step_name}.json'
+        argPath = Path(args.cmake_export)
+        fileName = f'cmake_export_{step_name}.json'
+
+        if argPath.is_absolute():
+            filePath = argPath / fileName
+        else:
+            filePath = Path(args.path) / argPath / fileName
+
+        filePath.parent.mkdir(exist_ok=True)
+
         with open(filePath, 'w') as f:
             json.dump(jDict, f, indent=4)
