@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 
 import ast
+import json
 from contextlib import suppress
 import os
 from pathlib import Path
@@ -64,6 +65,16 @@ class CmakeBuildTask(TaskExtensionPoint):
             action='store_true',
             help='Force CMake configure step')
 
+        parser.add_argument(
+            '--cmake-export-only',
+            action='store_true',
+            help='Export cmake configure settings to json format and exit')
+
+        parser.add_argument(
+            '--cmake-export',
+            action='store_true',
+            help='Export cmake configure settings to json format')
+
     async def build(  # noqa: D102
         self, *, additional_hooks=None, skip_hook_creation=False,
         environment_callback=None, additional_targets=None
@@ -86,6 +97,9 @@ class CmakeBuildTask(TaskExtensionPoint):
 
         rc = await self._reconfigure(args, env)
         if rc:
+            return rc
+
+        if args.cmake_export_only:
             return rc
 
         # ensure that CMake cache contains the project name
@@ -124,7 +138,7 @@ class CmakeBuildTask(TaskExtensionPoint):
         self.progress('cmake')
 
         cmake_cache = Path(args.build_base) / 'CMakeCache.txt'
-        run_configure = args.cmake_force_configure
+        run_configure = args.cmake_force_configure or args.cmake_export_only
         if args.cmake_clean_cache and cmake_cache.exists():
             cmake_cache.unlink()
         if not run_configure:
@@ -171,6 +185,13 @@ class CmakeBuildTask(TaskExtensionPoint):
         if CMAKE_EXECUTABLE is None:
             raise RuntimeError("Could not find 'cmake' executable")
         os.makedirs(args.build_base, exist_ok=True)
+
+        if args.cmake_export or args.cmake_export_only:
+            self._export_cmake_settings("configure", args, cmake_args[1:], env)
+
+        if args.cmake_export_only:
+            return
+
         completed = await run(
             self.context,
             [CMAKE_EXECUTABLE] + cmake_args,
@@ -244,6 +265,13 @@ class CmakeBuildTask(TaskExtensionPoint):
                 job_args = self._get_make_arguments(env)
                 if job_args:
                     cmd += ['--'] + job_args
+
+            if args.cmake_export:
+                if len(target) > 0:
+                    self._export_cmake_settings("build_" + target, args, cmd[1:], env)
+                else:
+                    self._export_cmake_settings("build", args, cmd[1:], env)
+
             completed = await run(
                 self.context, cmd, cwd=args.build_base, env=env)
             if completed.returncode:
@@ -347,5 +375,22 @@ class CmakeBuildTask(TaskExtensionPoint):
             job_args = self._get_make_arguments(env)
             if job_args:
                 cmd += ['--'] + job_args
+
+        if args.cmake_export:
+            self._export_cmake_settings("install", args, cmd[1:], env)
         return await run(
             self.context, cmd, cwd=args.build_base, env=env)
+
+    def _export_cmake_settings(self, step_name, args, cmd, env):
+        jDict = {
+            "cmake_exec": CMAKE_EXECUTABLE,
+            "cmake_args": cmd,
+            "build_path": args.build_base,
+            "src_path": args.path,
+            "env": env,
+            "shell": False,
+            "colcon_build_type": self.context.pkg.type
+        }
+        filePath = Path(args.build_base) / f'cmake_export_{step_name}.json'
+        with open(filePath, 'w') as f:
+            json.dump(jDict, f, indent=4)
