@@ -64,12 +64,10 @@ class CmakeBuildTask(TaskExtensionPoint):
             '--cmake-force-configure',
             action='store_true',
             help='Force CMake configure step')
-
         parser.add_argument(
             '--cmake-export-only',
             action='store_true',
             help='Export cmake configure settings to json format and exit')
-
         parser.add_argument(
             '--cmake-export',
             metavar='EXPORT_PATH',
@@ -401,7 +399,8 @@ class CmakeBuildTask(TaskExtensionPoint):
         else:
             filePath = Path(args.path) / argPath / fileName
 
-        filePath.parent.mkdir(exist_ok=True)
+        if not filePath.parent.exists():
+            return
 
         with open(filePath, 'w') as f:
             json.dump(jDict, f, indent=4)

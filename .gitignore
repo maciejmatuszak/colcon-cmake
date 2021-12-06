@@ -1,0 +1,6 @@
+
+colcon_cmake.egg-info/
+
+**/__pycache__/
+
+log/
